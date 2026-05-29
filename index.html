@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🦦 Nutri IA</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Lora', serif; }
+    @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+    @keyframes pulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    textarea:focus, input:focus { outline: none; border-color: #2d5a27 !important; box-shadow: 0 0 0 3px rgba(45,90,39,0.12); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #c8dbb5; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+ 
+//Renderizador de Markdown
+function renderMarkdown(text) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements = [];
+  let tableBuffer = [];
+  let inTable = false;
+  let key = 0;
+ 
+  const flushTable = () => {
+    if (tableBuffer.length >= 2) {
+      const headers = tableBuffer[0].split("|").filter(c => c.trim()).map(c => c.trim());
+      const rows = tableBuffer.slice(2).map(r => r.split("|").filter(c => c.trim()).map(c => c.trim()));
+      elements.push(
+        <div key={key++} style={{ overflowX: "auto", margin: "16px 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <thead>
+              <tr>{headers.map((h, i) => (
+                <th key={i} style={{ background: "#2d5a27", color: "#fff", padding: "8px 12px", textAlign: "left", fontFamily: "'Crimson Text', serif" }}>{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} style={{ background: ri % 2 === 0 ? "#f9f5f0" : "#ffffff" }}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={{ padding: "7px 12px", borderBottom: "1px solid #e8e0d5", color: "#3d3228" }}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    tableBuffer = []; inTable = false;
+  };
+ 
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("|")) { inTable = true; tableBuffer.push(line); continue; }
+    else if (inTable) flushTable();
+    if (!line.trim()) { elements.push(<div key={key++} style={{ height: "8px" }} />); continue; }
+ 
+    const inline = (txt) => {
+      const parts = txt.split(/(\*\*[^*]+\*\*)/g);
+      return parts.map((p, pi) => p.startsWith("**") && p.endsWith("**")
+        ? <strong key={pi} style={{ color: "#2d5a27" }}>{p.slice(2, -2)}</strong> : p);
+    };
+ 
+    if (line.startsWith("## "))
+      elements.push(<h2 key={key++} style={{ fontFamily: "'Crimson Text', serif", fontSize: "26px", color: "#1a3a17", margin: "20px 0 8px", borderBottom: "2px solid #8bc34a", paddingBottom: "6px" }}>{line.slice(3)}</h2>);
+    else if (line.startsWith("### "))
+      elements.push(<h3 key={key++} style={{ fontFamily: "'Crimson Text', serif", fontSize: "18px", color: "#2d5a27", margin: "18px 0 6px" }}>{line.slice(4)}</h3>);
+    else if (line.startsWith("**") && line.endsWith("**") && !line.slice(2, -2).includes("**"))
+      elements.push(<p key={key++} style={{ fontWeight: "700", color: "#2d5a27", margin: "4px 0", fontSize: "14px" }}>{line.slice(2, -2)}</p>);
+    else if (line.startsWith("- "))
+      elements.push(
+        <div key={key++} style={{ display: "flex", gap: "8px", margin: "3px 0", paddingLeft: "4px" }}>
+          <span style={{ color: "#8bc34a", fontWeight: "bold", marginTop: "1px" }}>▪</span>
+          <span style={{ color: "#3d3228", fontSize: "14px", lineHeight: "1.6" }}>{inline(line.slice(2))}</span>
+        </div>);
+    else if (/^\d+\./.test(line))
+      elements.push(<p key={key++} style={{ color: "#3d3228", fontSize: "14px", margin: "6px 0", paddingLeft: "4px", lineHeight: "1.6" }}>{inline(line)}</p>);
+    else if (line.startsWith("---"))
+      elements.push(<hr key={key++} style={{ border: "none", borderTop: "1px solid #e8e0d5", margin: "12px 0" }} />);
+    else
+      elements.push(<p key={key++} style={{ color: "#3d3228", fontSize: "14px", margin: "4px 0", lineHeight: "1.7" }}>{inline(line)}</p>);
+  }
+  if (inTable) flushTable();
+  return elements;
+}
+ 
+// ejemplos
+const EXAMPLES = [
+  { label: "Celiaquía", condicion: "celiaquía", alergias: "mariscos", prohibiciones: "gluten, grasa", preferencias: "dulce, suave" },
+  { label: "Diabetes + Hipertensión", condicion: "diabetes tipo 2 con hipertensión arterial", alergias: "gluten", prohibiciones: "azúcar refinada, sal, harina de trigo, arroz blanco", preferencias: "cocina latinoamericana, especias aromáticas" },
+  { label: "Hipotiroidismo", condicion: "hipotiroidismo con sobrepeso", alergias: "", prohibiciones: "soja cruda, coles crudas, alimentos ultraprocesados", preferencias: "sabores suaves y reconfortantes, fácil de preparar" },
+];
+ 
+// Componente principal
+function NutriIA() {
+  const [condicion, setCondicion]       = useState("");
+  const [alergias, setAlergias]         = useState("");
+  const [prohibiciones, setProhibiciones] = useState("");
+  const [preferencias, setPreferencias] = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [receta, setReceta]             = useState(null);
+  const [imagen, setImagen]             = useState(null);
+  const [error, setError]               = useState(null);
+  const [dots, setDots]                 = useState(0);
+  const [fase, setFase]                 = useState("");
+  const intervalRef = useRef(null);
+  const resultRef   = useRef(null);
+ 
+  const startDots = () => { setDots(0); intervalRef.current = setInterval(() => setDots(d => (d + 1) % 4), 400); };
+  const stopDots  = () => clearInterval(intervalRef.current);
+ 
+  const handleSubmit = async () => {
+    if (!condicion.trim()) { setError("Por favor ingresa una condición médica."); return; }
+    setError(null); setReceta(null); setImagen(null); setLoading(true);
+    startDots();
+ 
+    try {
+      setFase("receta");
+      // Llama al backend FastAPI — que a su vez llama a HuggingFace
+      const response = await fetch("/api/receta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condicion, alergias, prohibiciones, preferencias }),
+      });
+ 
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `Error ${response.status}`);
+      }
+ 
+      const data = await response.json();
+      setReceta(data.receta);
+ 
+      if (data.imagen_base64) {
+        setFase("imagen");
+        setImagen(`data:image/png;base64,${data.imagen_base64}`);
+      }
+ 
+      setFase("");
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (e) {
+      setError(` ${e.message || "Error al conectar con el servidor. Intenta de nuevo."}`);
+    } finally {
+      setLoading(false); stopDots();
+    }
+  };
+ 
+  const handleExample = (ex) => {
+    setCondicion(ex.condicion); setAlergias(ex.alergias);
+    setProhibiciones(ex.prohibiciones); setPreferencias(ex.preferencias);
+    setReceta(null); setImagen(null); setError(null);
+  };
+ 
+  const handleDownload = () => {
+    if (!receta) return;
+    const blob = new Blob([receta], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `receta_nutriia_${condicion.slice(0, 20).replace(/\s/g, "_")}.txt`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+ 
+  const inputStyle = {
+    width: "100%", padding: "12px 14px", borderRadius: "10px",
+    border: "1.5px solid #c8dbb5", background: "#ffffff",
+    fontFamily: "'Lora', serif", fontSize: "14px", color: "#1a1a1a",
+    outline: "none", boxSizing: "border-box", resize: "vertical",
+    transition: "border-color 0.2s, box-shadow 0.2s",
+  };
+ 
+  const faseTexto = fase === "receta"
+    ? `🦦 Generando tu receta${".".repeat(dots)}`
+    : fase === "imagen"
+    ? ` Generando imagen del plato${".".repeat(dots)}`
+    : `🦦 Procesando${".".repeat(dots)}`;
+ 
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0f7e8 0%, #fdf8f0 50%, #e8f4e8 100%)", fontFamily: "'Lora', serif" }}>
+ 
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #1a3a17 0%, #2d5a27 60%, #3d7a35 100%)", padding: "36px 24px 28px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundImage: "radial-gradient(circle at 20% 50%, rgba(139,195,74,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 40%)" }} />
+        <div style={{ position: "relative" }}>
+          <div style={{ fontSize: "52px", marginBottom: "6px", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>🦦</div>
+          <h1 style={{ fontFamily: "'Crimson Text', serif", fontSize: "42px", color: "#f0fae8", margin: 0, letterSpacing: "-0.5px", textShadow: "0 2px 12px rgba(0,0,0,0.4)" }}>
+            Nutri <span style={{ color: "#a8d46f" }}>IA</span>
+          </h1>
+          <p style={{ color: "#c8e8a0", fontSize: "15px", margin: "6px 0 0", fontStyle: "italic", letterSpacing: "0.3px" }}>
+            Plataforma de Nutrición Personalizada con IA
+          </p>
+          <div style={{ marginTop: "12px", display: "flex", justifyContent: "center", gap: "16px", fontSize: "12px", color: "#90c060", flexWrap: "wrap" }}>
+            <span>✦ Recetas Terapéuticas</span>
+            <span>✦ Seguro y Personalizado</span>
+            <span>✦ Evidencia Nutricional</span>
+          </div>
+        </div>
+      </div>
+ 
+      {/* Disclaimer */}
+      <div style={{ background: "#fff8e7", borderBottom: "1px solid #f0d890", padding: "10px 24px", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: "12px", color: "#8a6a20" }}>
+          <strong>Aviso médico:</strong> Nutri IA es una herramienta orientativa. Las recetas deben ser validadas por un profesional de la salud antes de adoptarlas como tratamiento.
+        </p>
+      </div>
+ 
+      <div style={{ maxWidth: "820px", margin: "0 auto", padding: "32px 20px" }}>
+ 
+        {/* Ejemplos */}
+        <div style={{ marginBottom: "28px", textAlign: "center" }}>
+          <p style={{ fontSize: "11px", color: "#6a7a60", marginBottom: "10px", letterSpacing: "1px", textTransform: "uppercase" }}>Ejemplos rápidos</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+            {EXAMPLES.map((ex, i) => (
+              <button key={i} onClick={() => handleExample(ex)}
+                style={{ padding: "7px 18px", borderRadius: "20px", border: "1.5px solid #8bc34a", background: "#f4faec", color: "#2d5a27", fontSize: "13px", cursor: "pointer", fontFamily: "'Lora', serif", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.target.style.background = "#2d5a27"; e.target.style.color = "#fff"; }}
+                onMouseLeave={e => { e.target.style.background = "#f4faec"; e.target.style.color = "#2d5a27"; }}>
+                {ex.label}
+              </button>
+            ))}
+          </div>
+        </div>
+ 
+        {/* Formulario */}
+        <div style={{ background: "#ffffff", borderRadius: "20px", padding: "32px", boxShadow: "0 8px 40px rgba(45,90,39,0.12), 0 2px 8px rgba(0,0,0,0.05)", border: "1px solid #e0eed6" }}>
+          <h2 style={{ fontFamily: "'Crimson Text', serif", color: "#1a3a17", fontSize: "22px", margin: "0 0 24px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ background: "#2d5a27", color: "#fff", borderRadius: "50%", width: "30px", height: "30px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "14px" }}></span>
+            Perfil del Paciente
+          </h2>
+ 
+          <div style={{ display: "grid", gap: "20px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#2d5a27", marginBottom: "6px", letterSpacing: "0.3px" }}>
+                Condición médica <span style={{ color: "#e53935" }}>*</span>
+              </label>
+              <textarea rows={2} style={inputStyle} placeholder="Ej: celiaquía, diabetes tipo 2, hipotiroidismo…"
+                value={condicion} onChange={e => setCondicion(e.target.value)} />
+              <p style={{ fontSize: "11px", color: "#90a080", margin: "4px 0 0" }}>Separa múltiples condiciones con comas</p>
+            </div>
+ 
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#2d5a27", marginBottom: "6px" }}> Alergias alimentarias</label>
+                <textarea rows={2} style={inputStyle} placeholder="Ej: mariscos, frutos secos…"
+                  value={alergias} onChange={e => setAlergias(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#2d5a27", marginBottom: "6px" }}> Ingredientes prohibidos</label>
+                <textarea rows={2} style={inputStyle} placeholder="Ej: gluten, sal, azúcar refinada…"
+                  value={prohibiciones} onChange={e => setProhibiciones(e.target.value)} />
+              </div>
+            </div>
+ 
+            <div>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#2d5a27", marginBottom: "6px" }}> Preferencias de sabor</label>
+              <textarea rows={2} style={inputStyle} placeholder="Ej: dulce, suave, cocina latinoamericana…"
+                value={preferencias} onChange={e => setPreferencias(e.target.value)} />
+            </div>
+          </div>
+ 
+          {error && (
+            <div style={{ background: "#fdecea", border: "1px solid #f5c6cb", borderRadius: "10px", padding: "10px 14px", marginTop: "16px", color: "#c62828", fontSize: "13px" }}>
+              {error}
+            </div>
+          )}
+ 
+          <button onClick={handleSubmit} disabled={loading}
+            style={{ width: "100%", marginTop: "24px", padding: "15px", borderRadius: "12px", border: "none", background: loading ? "#a0b890" : "linear-gradient(135deg, #2d5a27 0%, #4a8f3f 100%)", color: "#fff", fontSize: "16px", fontFamily: "'Crimson Text', serif", fontWeight: "600", cursor: loading ? "not-allowed" : "pointer", letterSpacing: "0.5px", boxShadow: loading ? "none" : "0 4px 16px rgba(45,90,39,0.35)", transition: "all 0.3s" }}>
+            {loading ? faseTexto : "🦦 Generar Receta Personalizada"}
+          </button>
+        </div>
+ 
+        {/* Loading */}
+        {loading && (
+          <div style={{ textAlign: "center", marginTop: "32px", padding: "24px" }}>
+            <div style={{ fontSize: "36px", animation: "bounce 1s infinite" }}>🦦</div>
+            <p style={{ color: "#4a8f3f", fontStyle: "italic", marginTop: "10px" }}>
+              {fase === "imagen" ? "Generando la imagen del plato con FLUX…" : "Consultando a Llama 3 para tu receta…"}
+            </p>
+            <div style={{ display: "flex", justifyContent: "center", gap: "6px", marginTop: "12px" }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#8bc34a", animation: `pulse 1.2s ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        )}
+ 
+        {/* Resultado */}
+        {receta && !loading && (
+          <div ref={resultRef} style={{ marginTop: "32px", animation: "fadeIn 0.5s ease" }}>
+            <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", boxShadow: "0 8px 40px rgba(45,90,39,0.12)", border: "1px solid #d0e8c0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "28px" }}>🦦</span>
+                  <div>
+                    <h3 style={{ fontFamily: "'Crimson Text', serif", color: "#1a3a17", margin: 0, fontSize: "20px" }}>Receta Generada</h3>
+                    <p style={{ margin: 0, fontSize: "12px", color: "#8a9a80" }}>Para: <em>{condicion}</em></p>
+                  </div>
+                </div>
+                <button onClick={handleDownload}
+                  style={{ padding: "8px 18px", borderRadius: "8px", border: "1.5px solid #2d5a27", background: "transparent", color: "#2d5a27", fontSize: "13px", cursor: "pointer", fontFamily: "'Lora', serif" }}>
+                  💾 Guardar receta
+                </button>
+              </div>
+ 
+              {/* Imagen del plato */}
+              {imagen && (
+                <div style={{ marginBottom: "24px", borderRadius: "14px", overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.12)" }}>
+                  <img src={imagen} alt="Imagen del plato generada por FLUX" style={{ width: "100%", display: "block", maxHeight: "420px", objectFit: "cover" }} />
+                  <p style={{ margin: 0, padding: "8px 14px", background: "#f4faec", fontSize: "11px", color: "#6a8a60", fontStyle: "italic" }}>
+                    Imagen generada por FLUX.1-schnell
+                  </p>
+                </div>
+              )}
+ 
+              <div style={{ borderTop: "2px solid #e8f0e0", paddingTop: "20px" }}>
+                {renderMarkdown(receta)}
+              </div>
+            </div>
+ 
+            <div style={{ textAlign: "center", marginTop: "20px" }}>
+              <button onClick={() => { setReceta(null); setImagen(null); setCondicion(""); setAlergias(""); setProhibiciones(""); setPreferencias(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                style={{ padding: "10px 24px", borderRadius: "10px", border: "1.5px solid #ccc", background: "#fafafa", color: "#666", fontSize: "13px", cursor: "pointer", fontFamily: "'Lora', serif" }}>
+                ↑ Nueva consulta
+              </button>
+            </div>
+          </div>
+        )}
+ 
+        {/* Footer */}
+        <div style={{ textAlign: "center", marginTop: "48px", paddingTop: "20px", borderTop: "1px solid #ddeedd" }}>
+          <p style={{ fontSize: "12px", color: "#90a080", fontStyle: "italic" }}>
+            🦦 Nutri IA — Proyecto Final IA Generativa y Python · Carolhina Real Vega · ID 038330
+          </p>
+          <p style={{ fontSize: "11px", color: "#aabaa0", margin: "4px 0 0" }}>
+            Recomendada por nutrias, si hablaran… 🦦
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+ReactDOM.createRoot(document.getElementById("root")).render(<NutriIA />);
+</script>
+</body>
+</html>
